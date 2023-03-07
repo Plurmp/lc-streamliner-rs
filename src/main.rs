@@ -7,7 +7,8 @@ use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
 
-use nom::bytes::complete::take_until1;
+use tokio::sync::RwLock;
+
 use serenity::async_trait;
 use serenity::client::bridge::gateway::ShardManager;
 use serenity::framework::standard::macros::{command, group};
@@ -24,12 +25,14 @@ use tracing::{error, info};
 
 use lazy_static::lazy_static;
 
-use nom::{bytes::complete::tag, IResult};
+use nom::{
+    bytes::complete::{tag, take_until1},
+    IResult,
+};
 
 lazy_static! {
-    static ref LAST_LC: tokio::sync::RwLock<String> = tokio::sync::RwLock::new(String::default());
-    static ref LAST_SRIRACHA_EMBED_MESSAGE: tokio::sync::RwLock<Option<Message>> =
-        tokio::sync::RwLock::new(None);
+    static ref LAST_LC: RwLock<String> = RwLock::new(String::default());
+    static ref LAST_SRIRACHA_EMBED_MESSAGE: RwLock<Option<Message>> = RwLock::new(None);
     static ref BOTS: HashMap<&'static str, u64> = HashMap::from([
         ("sriracha", 607661949194469376),
         ("ohsheet", 640402425395675178),
@@ -79,10 +82,12 @@ impl EventHandler for Handler {
             if msg.content.starts_with(".lc") {
                 let mut last_lc = LAST_LC.write().await;
                 *last_lc = msg.content.clone();
-            } else if let Some(_) = msg.embeds.first() {
-                let message_id = msg.id.clone();
-                let mut last_sriracha_embed_message = LAST_SRIRACHA_EMBED_MESSAGE.write().await;
-                *last_sriracha_embed_message = Some(msg);
+            } else if msg.embeds.first().is_some() {
+                let message_id = msg.id;
+                {
+                    let mut last_sriracha_embed_message = LAST_SRIRACHA_EMBED_MESSAGE.write().await;
+                    *last_sriracha_embed_message = Some(msg);
+                }
                 info!("Last sriracha embed message: {}", message_id);
             }
         } else if is_lc_bot(&msg.author) && msg.content.starts_with("Looking up") {
@@ -303,6 +308,7 @@ async fn en(ctx: &Context, _msg: &Message, _args: Args) -> CommandResult {
             .react(ctx, ReactionType::from_str("🇺🇸").unwrap())
             .await?;
     }
+    
 
     Ok(())
 }
